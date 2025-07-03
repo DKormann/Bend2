@@ -82,6 +82,7 @@ parseTermOpr t = choice
   , parseChk t   -- ::
   , parseAdd t   -- +
   , parseNumOp t -- <, >, ==, etc.
+  , parseAssTyped t -- : =
   , parseAss t   -- =
   , return t ]
 
@@ -254,7 +255,7 @@ parsePat :: Parser Term
 parsePat = label "pattern match" $ do
   srcPos  <- getSourcePos
   _       <- try $ symbolStrict "match"
-  scruts  <- some parseTerm
+  scruts  <- some parseExpr
   delim   <- choice [ ':' <$ symbol ":", '{' <$ symbol "{" ]
   moves   <- many parseWith
   clauses <- case delim of
@@ -283,7 +284,7 @@ parseIndentClauses col arity = many clause where
       pos  <- getSourcePos
       guard (unPos (sourceColumn pos) >= col)
       _    <- symbol "case"
-      pats <- replicateM arity parseTerm
+      pats <- replicateM arity parseExpr
       _    <- symbol ":"
       body <- parseTerm
       pure (pats, body)
@@ -294,7 +295,7 @@ parseBraceClauses :: Int -> Parser [Case]
 parseBraceClauses arity = manyTill singleClause (lookAhead (symbol "}")) where
   singleClause = label "case clause" $ do
     _    <- symbol "case"
-    pats <- replicateM arity parseTerm
+    pats <- replicateM arity parseExpr
     _    <- symbol ":"
     body <- parseTerm
     pure (pats, body)
@@ -680,6 +681,24 @@ parseAss t = label "location binding" $ do
   case t of
     Var x _ -> return $ Let v (Lam x (\_ -> b))
     _       -> return $ Pat [v] [] [([t], b)]
+
+
+parseAssTyped :: Term -> Parser Term
+parseAssTyped t = label "location binding" $ do
+  _ <- try $ do
+    _ <- symbol ":"
+    -- _ <- parseNat
+    _ <- parseExpr
+    _ <- symbol "="
+    notFollowedBy (char '=')
+  v <- parseTerm
+  _ <- parseSemi
+  b <- parseTerm
+  case t of
+    Var x _ -> return $ Let v (Lam x (\_ -> b))
+    _       -> return $ Pat [v] [] [([t], b)]
+
+
 
 -- | HOAS‐style binders
 
